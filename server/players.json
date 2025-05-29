@@ -79,12 +79,12 @@
     "12": {
       "username": "12",
       "password": "12",
-      "exp": 0,
+      "exp": 30,
       "level": 1,
       "towers": {
         "guard1": {
           "type": "Guard Tower",
-          "hp": 1000,
+          "hp": 0,
           "max_hp": 1000,
           "atk": 300,
           "def": 100,
@@ -95,7 +95,7 @@
         },
         "guard2": {
           "type": "Guard Tower",
-          "hp": 1000,
+          "hp": 300,
           "max_hp": 1000,
           "atk": 300,
           "def": 100,
@@ -160,7 +160,7 @@
       "towers": {
         "guard1": {
           "type": "Guard Tower",
-          "hp": 1000,
+          "hp": 0,
           "max_hp": 1000,
           "atk": 300,
           "def": 100,
@@ -171,7 +171,7 @@
         },
         "guard2": {
           "type": "Guard Tower",
-          "hp": 1000,
+          "hp": 0,
           "max_hp": 1000,
           "atk": 300,
           "def": 100,
@@ -212,6 +212,82 @@
           "def": 150,
           "mana": 4,
           "exp": 10,
+          "level": 1,
+          "special": ""
+        },
+        {
+          "name": "Queen",
+          "hp": 99,
+          "max_hp": 99,
+          "atk": 0,
+          "def": 0,
+          "mana": 5,
+          "exp": 30,
+          "level": 1,
+          "special": "Heal 300 to lowest HP tower"
+        }
+      ]
+    },
+    "help": {
+      "username": "help",
+      "password": "help",
+      "exp": 0,
+      "level": 1,
+      "towers": {
+        "guard1": {
+          "type": "Guard Tower",
+          "hp": 1000,
+          "max_hp": 1000,
+          "atk": 300,
+          "def": 100,
+          "crit": 0.05,
+          "exp": 100,
+          "level": 1,
+          "position": "guard1"
+        },
+        "guard2": {
+          "type": "Guard Tower",
+          "hp": 1000,
+          "max_hp": 1000,
+          "atk": 300,
+          "def": 100,
+          "crit": 0.05,
+          "exp": 100,
+          "level": 1,
+          "position": "guard2"
+        },
+        "king": {
+          "type": "King Tower",
+          "hp": 2000,
+          "max_hp": 2000,
+          "atk": 500,
+          "def": 300,
+          "crit": 0.1,
+          "exp": 200,
+          "level": 1,
+          "position": "king"
+        }
+      },
+      "troops": [
+        {
+          "name": "Prince",
+          "hp": 500,
+          "max_hp": 500,
+          "atk": 400,
+          "def": 300,
+          "mana": 6,
+          "exp": 50,
+          "level": 1,
+          "special": ""
+        },
+        {
+          "name": "Knight",
+          "hp": 200,
+          "max_hp": 200,
+          "atk": 300,
+          "def": 150,
+          "mana": 5,
+          "exp": 25,
           "level": 1,
           "special": ""
         },

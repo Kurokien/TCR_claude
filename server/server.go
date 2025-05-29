@@ -1,4 +1,4 @@
-// server.go
+// server.go - Authentication first, simple version
 package main
 
 import (
@@ -48,6 +48,7 @@ func (s *Server) Start(port string) error {
 			continue
 		}
 
+		log.Printf("New connection from: %s", conn.RemoteAddr())
 		go s.handleClient(conn)
 	}
 }
@@ -60,29 +61,40 @@ func (s *Server) handleClient(conn net.Conn) {
 	var username string
 	var playerNum int
 
-	// Authentication phase
-	conn.Write([]byte("=== Welcome to Text-Based Clash Royale! ===\n"))
-	conn.Write([]byte("Enter username: \nn"))
+	// ĐƠN GIẢN HÓA: CHỈ GỬI USERNAME PROMPT TRƯỚC
+	conn.Write([]byte("Enter username: "))
 
+	// Đọc username
 	if !scanner.Scan() {
 		return
 	}
 	username = strings.TrimSpace(scanner.Text())
 
-	conn.Write([]byte("Enter password: \n"))
+	// Gửi password prompt
+	conn.Write([]byte("Enter password: "))
+
+	// Đọc password
 	if !scanner.Scan() {
 		return
 	}
 	password := strings.TrimSpace(scanner.Text())
 
+	// Authenticate
 	player := s.authenticatePlayer(username, password)
 	if player == nil {
 		conn.Write([]byte("Authentication failed!\n"))
 		return
 	}
 
-	conn.Write([]byte(fmt.Sprintf("Welcome %s! Level: %d, EXP: %.0f\n",
-		username, player.Level, player.EXP)))
+	// WELCOME MESSAGE SAU KHI ĐĂNG NHẬP THÀNH CÔNG
+	conn.Write([]byte("╔══════════════════════════════════════╗\n"))
+	conn.Write([]byte("║     Text-Based Clash Royale Server   ║\n"))
+	conn.Write([]byte("║              TCR v2.0                ║\n"))
+	conn.Write([]byte("╚══════════════════════════════════════╝\n"))
+
+	welcomeMsg := fmt.Sprintf("Welcome %s! Level: %d, EXP: %.0f\n",
+		username, player.Level, player.EXP)
+	conn.Write([]byte(welcomeMsg))
 
 	// Add to clients and determine player number
 	s.clientsMux.Lock()
@@ -92,18 +104,21 @@ func (s *Server) handleClient(conn net.Conn) {
 	if clientCount == 1 {
 		playerNum = 1
 		conn.Write([]byte("Waiting for opponent...\n"))
+		s.clientsMux.Unlock()
 	} else if clientCount == 2 {
 		playerNum = 2
-		s.startNewGame()
-	}
-	s.clientsMux.Unlock()
+		conn.Write([]byte("Game starting...\n"))
+		s.clientsMux.Unlock()
 
-	if clientCount > 2 {
+		time.Sleep(200 * time.Millisecond)
+		s.startNewGame()
+	} else {
+		s.clientsMux.Unlock()
 		conn.Write([]byte("Game is full. Please wait for next round.\n"))
 		return
 	}
 
-	// Show initial help
+	// CHỈ GỬI HELP SAU KHI ĐÃ VÀO GAME
 	s.sendHelp(conn)
 
 	// Game command loop
@@ -113,7 +128,12 @@ func (s *Server) handleClient(conn net.Conn) {
 			continue
 		}
 
-		s.processCommand(conn, playerNum, input)
+		if strings.ToLower(input) == "quit" {
+			conn.Write([]byte("Thanks for playing! Goodbye!\n"))
+			break
+		}
+
+		s.processCommand(conn, playerNum, username, input)
 	}
 
 	// Clean up on disconnect
@@ -121,7 +141,7 @@ func (s *Server) handleClient(conn net.Conn) {
 }
 
 // processCommand handles client commands
-func (s *Server) processCommand(conn net.Conn, playerNum int, input string) {
+func (s *Server) processCommand(conn net.Conn, playerNum int, username string, input string) {
 	command := strings.ToLower(input)
 	parts := strings.Split(command, " ")
 
@@ -133,23 +153,23 @@ func (s *Server) processCommand(conn net.Conn, playerNum int, input string) {
 		s.displayGameState(conn, playerNum)
 
 	case "attack":
+		if !s.isPlayerTurn(playerNum) {
+			s.notifyNotYourTurn(conn, playerNum)
+			return
+		}
+
 		if len(parts) == 3 {
 			troopIdx, err := strconv.Atoi(parts[1])
 			target := strings.ToLower(parts[2])
 
 			if err == nil && troopIdx >= 1 && troopIdx <= 3 {
-				s.processAttack(conn, playerNum, troopIdx-1, target)
+				s.processAttackWithTurns(conn, playerNum, troopIdx-1, target)
 			} else {
 				conn.Write([]byte("Invalid troop index. Use 1-3.\n"))
 			}
 		} else {
 			conn.Write([]byte("Usage: attack <troop_index> <target>\n"))
-			conn.Write([]byte("Example: attack 1 guard1\n"))
 		}
-
-	case "quit":
-		conn.Write([]byte("Thanks for playing! Goodbye!\n"))
-		return
 
 	default:
 		conn.Write([]byte("Unknown command. Type 'help' for available commands.\n"))
@@ -159,24 +179,21 @@ func (s *Server) processCommand(conn net.Conn, playerNum int, input string) {
 // sendHelp displays available commands
 func (s *Server) sendHelp(conn net.Conn) {
 	help := `
-=== TCR Commands ===
-status          - Show current game state
-attack <1-3> <target> - Attack with troop to target
-                       Targets: king, guard1, guard2
-quit            - Leave the game
-help            - Show this help
-
-Examples:
-  attack 1 guard1   - Attack guard1 with your first troop
-  attack 2 king     - Attack king tower with your second troop
-
-Rules:
-- Each troop costs mana to deploy
-- Mana regenerates 1 per second (max 10)
-- Must destroy guard towers before attacking king
-- Game lasts 3 minutes
-- Win by destroying king tower or more towers when time ends
-====================
+╔═══════════════ TCR Commands ════════════════╗
+║ status          - Show current game state   ║
+║ attack <1-3> <target> - Attack with troop   ║
+║                       Targets: king,        ║
+║                       guard1, guard2        ║
+║ quit            - Leave the game            ║
+║ help            - Show this help            ║
+╠═════════════════════════════════════════════╣
+║ Turn-Based Rules:                           ║
+║ • Each player takes turns                   ║
+║ • One attack per turn                       ║
+║ • Destroy a tower = get bonus turn          ║
+║ • Must destroy guard towers before king     ║
+║ • Game lasts 3 minutes                      ║
+╚═════════════════════════════════════════════╝
 `
 	conn.Write([]byte(help))
 }
@@ -199,10 +216,12 @@ func (s *Server) removeClient(username string) {
 
 // startNewGame initializes a new game session
 func (s *Server) startNewGame() {
+	s.clientsMux.RLock()
 	usernames := make([]string, 0, 2)
 	for username := range s.clients {
 		usernames = append(usernames, username)
 	}
+	s.clientsMux.RUnlock()
 
 	if len(usernames) != 2 {
 		return
@@ -215,21 +234,20 @@ func (s *Server) startNewGame() {
 		Player1Mana:   5,
 		Player2Mana:   5,
 		GameStartTime: time.Now(),
-		GameDuration:  180, // 3 minutes
+		GameDuration:  180,
 		IsGameActive:  true,
 		Turn:          1,
 	}
 	s.gameStateMux.Unlock()
 
-	// Reset towers HP to max
 	s.resetTowersHP()
 
 	s.broadcastToAll(fmt.Sprintf("🎮 GAME STARTED! 🎮\n"))
 	s.broadcastToAll(fmt.Sprintf("Players: %s vs %s\n", usernames[0], usernames[1]))
-	s.broadcastToAll("⏰ 3 minutes battle begins now!\n")
+	s.broadcastToAll(fmt.Sprintf("%s goes first!\n", usernames[0]))
+	s.broadcastToAll("3 minutes battle begins now!\n")
 	s.broadcastToAll("Type 'status' to see current game state.\n")
 
-	// Start background systems
 	s.startManaRegeneration()
 	s.startGameTimer()
 }

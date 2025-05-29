@@ -33,88 +33,102 @@ func (s *Server) displayGameState(conn net.Conn, playerNum int) {
 		opponentMana = s.gameState.Player1Mana
 	}
 
-	output := fmt.Sprintf("\n=== 🎮 GAME STATUS 🎮 ===\n")
-	output += fmt.Sprintf("💧 Your Mana: %.0f/10\n", playerMana)
-	output += fmt.Sprintf("💧 Opponent Mana: %.0f/10\n", opponentMana)
+	output := fmt.Sprintf("\n╔═══════════════ 🎮 GAME STATUS 🎮 ═══════════════╗\n")
+
+	// HIỂN THỊ LƯỢT CHƠI
+	var turnStatus string
+	if s.gameState.Turn == playerNum {
+		turnStatus = "🟢 YOUR TURN - You can attack!"
+	} else {
+		var waitingFor string
+		if s.gameState.Turn == 1 {
+			waitingFor = s.gameState.Player1.Username
+		} else {
+			waitingFor = s.gameState.Player2.Username
+		}
+		turnStatus = fmt.Sprintf("🔴 %s's TURN - Please wait", waitingFor)
+	}
+	output += fmt.Sprintf("║ Turn: %-45s ║\n", turnStatus)
+	output += fmt.Sprintf("╠═══════════════════════════════════════════════════╣\n")
+
+	output += fmt.Sprintf("║ 💧 Your Mana: %-8.0f/10 | Opponent: %-8.0f/10 ║\n", playerMana, opponentMana)
 
 	if s.gameState.IsGameActive {
 		elapsed := time.Since(s.gameState.GameStartTime).Seconds()
 		remaining := float64(s.gameState.GameDuration) - elapsed
 		if remaining > 0 {
-			output += fmt.Sprintf("⏰ Time Remaining: %.0f seconds\n", remaining)
+			output += fmt.Sprintf("║ ⏰ Time Remaining: %-27.0f seconds ║\n", remaining)
 		} else {
-			output += fmt.Sprintf("⏰ Time: OVERTIME!\n")
+			output += fmt.Sprintf("║ ⏰ Time: %-39s ║\n", "OVERTIME!")
 		}
 	}
 
-	output += fmt.Sprintf("\n--- 🏰 YOUR TOWERS ---\n")
+	output += fmt.Sprintf("╠═══════════════════════════════════════════════════╣\n")
+	output += fmt.Sprintf("║ 🏰 YOUR TOWERS:                                   ║\n")
+
 	for pos, tower := range player.Towers {
 		status := "🟢 ALIVE"
 		if tower.HP <= 0 {
 			status = "💥 DESTROYED"
 		}
 		hpPercent := (tower.HP / tower.MaxHP) * 100
-		output += fmt.Sprintf("%-12s (%s): HP %.0f/%.0f (%.0f%%) [%s]\n",
+		output += fmt.Sprintf("║ %-12s (%s): HP %4.0f/%4.0f (%3.0f%%) [%s] ║\n",
 			tower.Type, pos, tower.HP, tower.MaxHP, hpPercent, status)
 	}
 
-	output += fmt.Sprintf("\n--- 🏰 OPPONENT TOWERS ---\n")
+	output += fmt.Sprintf("╠═══════════════════════════════════════════════════╣\n")
+	output += fmt.Sprintf("║ 🏰 OPPONENT TOWERS:                               ║\n")
+
 	for pos, tower := range opponent.Towers {
 		status := "🟢 ALIVE"
 		if tower.HP <= 0 {
 			status = "💥 DESTROYED"
 		}
 		hpPercent := (tower.HP / tower.MaxHP) * 100
-		output += fmt.Sprintf("%-12s (%s): HP %.0f/%.0f (%.0f%%) [%s]\n",
+		output += fmt.Sprintf("║ %-12s (%s): HP %4.0f/%4.0f (%3.0f%%) [%s] ║\n",
 			tower.Type, pos, tower.HP, tower.MaxHP, hpPercent, status)
 	}
 
-	output += fmt.Sprintf("\n--- ⚔️ YOUR TROOPS ---\n")
+	output += fmt.Sprintf("╠═══════════════════════════════════════════════════╣\n")
+	output += fmt.Sprintf("║ ⚔️ YOUR TROOPS:                                    ║\n")
+
 	for i, troop := range player.Troops {
-		levelBonus := ""
-		if troop.Level > 1 {
-			levelBonus = fmt.Sprintf(" (Lv.%d +%.0f%%)", troop.Level, float64(troop.Level-1)*10)
-		}
-		output += fmt.Sprintf("%d. %-8s: HP %.0f, ATK %.0f, DEF %.0f, MANA %.0f%s\n",
-			i+1, troop.Name, troop.HP, troop.ATK, troop.DEF, troop.MANA, levelBonus)
+		output += fmt.Sprintf("║ %d. %-8s: HP %3.0f, ATK %3.0f, DEF %3.0f, MANA %3.0f ║\n",
+			i+1, troop.Name, troop.HP, troop.ATK, troop.DEF, troop.MANA)
 		if troop.Special != "" {
-			output += fmt.Sprintf("   ✨ Special: %s\n", troop.Special)
+			output += fmt.Sprintf("║    ✨ Special: %-35s ║\n", troop.Special)
 		}
 	}
 
-	// Display tower destruction requirements
-	output += fmt.Sprintf("\n--- 🎯 ATTACK RULES ---\n")
-	guardTowersAlive := 0
-	for pos, tower := range opponent.Towers {
-		if (pos == "guard1" || pos == "guard2") && tower.HP > 0 {
-			guardTowersAlive++
-		}
+	output += fmt.Sprintf("╚═══════════════════════════════════════════════════╝\n")
+
+	if s.gameState.Turn == playerNum {
+		output += fmt.Sprintf("💡 Your turn! Use: attack <1-3> <target>\n")
+		output += fmt.Sprintf("   Targets: king, guard1, guard2\n")
 	}
 
-	if guardTowersAlive > 0 {
-		output += fmt.Sprintf("⚠️  Must destroy all Guard Towers (%d remaining) before attacking King Tower!\n", guardTowersAlive)
-	} else {
-		output += fmt.Sprintf("✅ King Tower is now vulnerable to attack!\n")
-	}
-
-	output += fmt.Sprintf("\n========================\n")
 	conn.Write([]byte(output))
 }
 
-// processAttack handles troop attacks with enhanced logic
-func (s *Server) processAttack(attackerConn net.Conn, playerNum int, troopIndex int, targetType string) {
+// processAttack handles troop attacks with turn-based system
+func (s *Server) processAttackWithTurns(conn net.Conn, playerNum int, troopIndex int, targetType string) {
 	s.gameStateMux.Lock()
 	defer s.gameStateMux.Unlock()
 
 	if s.gameState == nil || !s.gameState.IsGameActive {
-		attackerConn.Write([]byte("❌ Game not active.\n"))
+		conn.Write([]byte("❌ Game not active.\n"))
+		return
+	}
+
+	// Double check turn
+	if s.gameState.Turn != playerNum {
+		conn.Write([]byte("❌ Not your turn!\n"))
 		return
 	}
 
 	var attacker, defender *PlayerData
 	var attackerMana *float64
 	var attackerName, defenderName string
-	var defenderConn net.Conn
 
 	if playerNum == 1 {
 		attacker = s.gameState.Player1
@@ -122,32 +136,24 @@ func (s *Server) processAttack(attackerConn net.Conn, playerNum int, troopIndex 
 		attackerMana = &s.gameState.Player1Mana
 		attackerName = attacker.Username
 		defenderName = defender.Username
-		// Get defender connection
-		s.clientsMux.RLock()
-		defenderConn = s.clients[defenderName]
-		s.clientsMux.RUnlock()
 	} else {
 		attacker = s.gameState.Player2
 		defender = s.gameState.Player1
 		attackerMana = &s.gameState.Player2Mana
 		attackerName = attacker.Username
 		defenderName = defender.Username
-		// Get defender connection
-		s.clientsMux.RLock()
-		defenderConn = s.clients[defenderName]
-		s.clientsMux.RUnlock()
 	}
 
 	if troopIndex < 0 || troopIndex >= len(attacker.Troops) {
-		attackerConn.Write([]byte("❌ Invalid troop selection.\n"))
+		conn.Write([]byte("❌ Invalid troop selection.\n"))
 		return
 	}
 
 	troop := attacker.Troops[troopIndex]
 
-	// Check mana requirement
+	// Check mana
 	if *attackerMana < troop.MANA {
-		attackerConn.Write([]byte(fmt.Sprintf("❌ Not enough mana! Need %.0f, have %.0f\n",
+		conn.Write([]byte(fmt.Sprintf("❌ Not enough mana! Need %.0f, have %.0f\n",
 			troop.MANA, *attackerMana)))
 		return
 	}
@@ -155,181 +161,99 @@ func (s *Server) processAttack(attackerConn net.Conn, playerNum int, troopIndex 
 	// Deduct mana
 	*attackerMana -= troop.MANA
 
-	// Handle special abilities (Queen healing)
+	// Handle special abilities
 	if troop.Name == "Queen" {
-		s.handleQueenSpecial(attackerConn, attacker, attackerName, defenderConn)
+		s.handleQueenSpecial(conn, attacker, attackerName)
+		s.switchTurn() // Queen cũng tốn lượt
 		return
 	}
 
 	// Find and validate target
 	targetTower := s.findTargetTower(defender, targetType)
 	if targetTower == nil {
-		attackerConn.Write([]byte("❌ Invalid target or target already destroyed.\n"))
-		// Refund mana since attack failed
-		*attackerMana += troop.MANA
+		conn.Write([]byte("❌ Invalid target or target already destroyed.\n"))
 		return
 	}
 
-	// Validate attack rules (Simple TCR Rule: must destroy Guard Towers first)
-	if !s.canAttackTarget(defender, targetTower, attackerConn) {
-		// Refund mana since attack failed
-		*attackerMana += troop.MANA
+	// Validate attack rules
+	if !s.canAttackTarget(defender, targetTower, conn) {
 		return
 	}
 
-	// Calculate damage with enhanced logic
-	damage := s.calculateEnhancedDamage(troop, targetTower)
+	// Store original HP to check if tower was destroyed
+	originalHP := targetTower.HP
+
+	// Calculate and apply damage
+	damage := s.calculateDamage(troop.ATK, targetTower.DEF, 0.05)
 	targetTower.HP -= damage
 
 	if targetTower.HP < 0 {
 		targetTower.HP = 0
 	}
 
-	// Send attack results to both players
-	s.sendAttackResults(attackerConn, defenderConn, troop, targetTower,
-		damage, attackerName, defenderName)
+	// Send attack results
+	s.sendAttackResults(conn, troop, targetTower, damage, attackerName, defenderName)
 
-	// Check if tower was destroyed and handle continuous attack
-	if targetTower.HP <= 0 {
-		destroyed := s.handleTowerDestruction(targetTower, playerNum, attackerName, defenderName)
-		if destroyed {
-			// If game didn't end, allow troop to continue attacking (Simple TCR Rule)
-			if s.gameState != nil && s.gameState.IsGameActive {
-				s.handleContinuousAttack(attackerConn, playerNum, troopIndex,
-					attackerName, defenderName)
-			}
-		}
-	}
+	// Check if tower was destroyed
+	towerDestroyed := (originalHP > 0 && targetTower.HP <= 0)
 
-	// Tower counter-attack if still alive
-	if targetTower.HP > 0 {
-		s.handleTowerCounterAttack(attackerConn, defenderConn, targetTower,
-			troop, attackerName, defenderName)
-	}
-}
+	if towerDestroyed {
+		s.handleTowerDestruction(targetTower, playerNum, attackerName, defenderName)
 
-// calculateEnhancedDamage implements Enhanced TCR damage formula with CRIT
-func (s *Server) calculateEnhancedDamage(attacker *Troop, target *Tower) float64 {
-	baseDamage := attacker.ATK
-
-	// Enhanced TCR: Apply critical hit chance
-	// Default 5% crit chance for troops, towers have their own crit values
-	critChance := 0.05
-	isCritical := rand.Float64() < critChance
-
-	if isCritical {
-		baseDamage *= 1.2 // 20% bonus damage on crit
-	}
-
-	// Apply defense reduction
-	finalDamage := baseDamage - target.DEF
-	if finalDamage < 0 {
-		finalDamage = 0
-	}
-
-	return finalDamage
-}
-
-// handleContinuousAttack allows troop to continue attacking after destroying a tower
-func (s *Server) handleContinuousAttack(attackerConn net.Conn, playerNum int,
-	troopIndex int, attackerName, defenderName string) {
-
-	var defender *PlayerData
-	if playerNum == 1 {
-		defender = s.gameState.Player2
+		// BONUS TURN: Nếu tiêu diệt tháp thì được chơi tiếp
+		s.broadcastToAll(fmt.Sprintf("🔥 %s destroyed a tower and gets another turn!\n", attackerName))
+		// Không switch turn, player này tiếp tục được chơi
 	} else {
-		defender = s.gameState.Player1
-	}
-
-	// Check if there are more valid targets
-	availableTargets := s.getAvailableTargets(defender)
-	if len(availableTargets) == 0 {
-		return // No more targets
-	}
-
-	attackerConn.Write([]byte(fmt.Sprintf("🔥 %s can continue attacking! Available targets: %s\n",
-		s.gameState.Player1.Troops[troopIndex].Name,
-		fmt.Sprintf("%v", availableTargets))))
-	attackerConn.Write([]byte("Choose next target (or type 'skip' to end turn): "))
-}
-
-// getAvailableTargets returns list of available attack targets
-func (s *Server) getAvailableTargets(defender *PlayerData) []string {
-	var targets []string
-
-	// Check guard towers first
-	for pos, tower := range defender.Towers {
-		if tower.HP > 0 {
-			if pos == "guard1" || pos == "guard2" {
-				targets = append(targets, pos)
-			}
-		}
-	}
-
-	// If no guard towers, king tower is available
-	if len(targets) == 0 {
-		if kingTower, exists := defender.Towers["king"]; exists && kingTower.HP > 0 {
-			targets = append(targets, "king")
-		}
-	}
-
-	return targets
-}
-
-// handleTowerCounterAttack implements tower counter-attack mechanism
-func (s *Server) handleTowerCounterAttack(attackerConn, defenderConn net.Conn,
-	tower *Tower, attackingTroop *Troop, attackerName, defenderName string) {
-
-	// Tower counter-attacks with its own crit chance
-	damage := tower.ATK
-	isCritical := rand.Float64() < tower.CRIT
-
-	if isCritical {
-		damage *= 1.2
-	}
-
-	// Apply troop defense
-	finalDamage := damage - attackingTroop.DEF
-	if finalDamage < 0 {
-		finalDamage = 0
-	}
-
-	attackingTroop.HP -= finalDamage
-	if attackingTroop.HP < 0 {
-		attackingTroop.HP = 0
-	}
-
-	// Notify both players
-	counterMsg := fmt.Sprintf("🏰 %s counter-attacks %s for %.0f damage!",
-		tower.Type, attackingTroop.Name, finalDamage)
-	if isCritical {
-		counterMsg += " 💥 CRITICAL HIT!"
-	}
-	counterMsg += fmt.Sprintf(" (%s HP: %.0f/%.0f)\n",
-		attackingTroop.Name, attackingTroop.HP, attackingTroop.MaxHP)
-
-	if attackerConn != nil {
-		attackerConn.Write([]byte(counterMsg))
-	}
-	if defenderConn != nil {
-		defenderConn.Write([]byte(fmt.Sprintf("🛡️ Your %s counter-attacked! %s",
-			tower.Type, counterMsg)))
-	}
-
-	// Check if troop was defeated
-	if attackingTroop.HP <= 0 {
-		defeatMsg := fmt.Sprintf("💀 %s's %s was defeated!\n", attackerName, attackingTroop.Name)
-		if attackerConn != nil {
-			attackerConn.Write([]byte(defeatMsg))
-		}
-		if defenderConn != nil {
-			defenderConn.Write([]byte(defeatMsg))
-		}
+		// Chuyển lượt cho người chơi khác
+		s.switchTurn()
 	}
 }
 
-// handleQueenSpecial processes Queen's healing ability with enhanced feedback
-func (s *Server) handleQueenSpecial(conn net.Conn, player *PlayerData, playerName string, opponentConn net.Conn) {
+// switchTurn changes the current player's turn
+func (s *Server) switchTurn() {
+	if s.gameState.Turn == 1 {
+		s.gameState.Turn = 2
+		s.broadcastToAll(fmt.Sprintf("🔄 It's %s's turn now!\n", s.gameState.Player2.Username))
+	} else {
+		s.gameState.Turn = 1
+		s.broadcastToAll(fmt.Sprintf("🔄 It's %s's turn now!\n", s.gameState.Player1.Username))
+	}
+}
+
+// isPlayerTurn checks if it's the player's turn
+func (s *Server) isPlayerTurn(playerNum int) bool {
+	s.gameStateMux.RLock()
+	defer s.gameStateMux.RUnlock()
+
+	if s.gameState == nil || !s.gameState.IsGameActive {
+		return false
+	}
+
+	return s.gameState.Turn == playerNum
+}
+
+// notifyNotYourTurn informs player it's not their turn
+func (s *Server) notifyNotYourTurn(conn net.Conn, playerNum int) {
+	s.gameStateMux.RLock()
+	defer s.gameStateMux.RUnlock()
+
+	if s.gameState == nil {
+		conn.Write([]byte("❌ Game not started.\n"))
+		return
+	}
+
+	var waitingFor string
+	if s.gameState.Turn == 1 {
+		waitingFor = s.gameState.Player1.Username
+	} else {
+		waitingFor = s.gameState.Player2.Username
+	}
+
+	conn.Write([]byte(fmt.Sprintf("⏳ Not your turn! Waiting for %s to play.\n", waitingFor)))
+}
+
+// handleQueenSpecial processes Queen's healing ability
+func (s *Server) handleQueenSpecial(conn net.Conn, player *PlayerData, playerName string) {
 	var lowestTower *Tower
 	lowestHP := float64(99999)
 
@@ -353,20 +277,18 @@ func (s *Server) handleQueenSpecial(conn net.Conn, player *PlayerData, playerNam
 			lowestTower.Type, actualHeal, oldHP, lowestTower.HP)
 		conn.Write([]byte(message))
 
-		if opponentConn != nil {
-			opponentConn.Write([]byte(fmt.Sprintf("🔮 %s's Queen healed their %s for %.0f HP!\n",
-				playerName, lowestTower.Type, actualHeal)))
-		}
+		s.broadcastToOthers(conn, fmt.Sprintf("🔮 %s's Queen healed their %s!\n",
+			playerName, lowestTower.Type))
 	} else {
-		conn.Write([]byte("👑 Queen found no damaged towers to heal.\n"))
+		conn.Write([]byte("👑 Queen found no towers to heal.\n"))
 	}
 }
 
-// findTargetTower locates the target tower with improved logic
+// findTargetTower locates the target tower
 func (s *Server) findTargetTower(defender *PlayerData, targetType string) *Tower {
 	for pos, tower := range defender.Towers {
 		if tower.HP <= 0 {
-			continue // Skip destroyed towers
+			continue
 		}
 
 		switch targetType {
@@ -383,7 +305,6 @@ func (s *Server) findTargetTower(defender *PlayerData, targetType string) *Tower
 				return tower
 			}
 		case "guard":
-			// Target any available guard tower
 			if pos == "guard1" || pos == "guard2" {
 				return tower
 			}
@@ -392,75 +313,70 @@ func (s *Server) findTargetTower(defender *PlayerData, targetType string) *Tower
 	return nil
 }
 
-// canAttackTarget validates attack rules (Simple TCR Rule implementation)
+// canAttackTarget validates attack rules
 func (s *Server) canAttackTarget(defender *PlayerData, target *Tower, conn net.Conn) bool {
-	if target.Position == "king" {
-		// Simple TCR Rule: Must destroy Guard Towers before attacking King Tower
-		guardTowersAlive := 0
+	if target.Type == "King Tower" {
+		// Check if any guard towers are still alive
+		guardAlive := false
 		for pos, tower := range defender.Towers {
 			if (pos == "guard1" || pos == "guard2") && tower.HP > 0 {
-				guardTowersAlive++
+				guardAlive = true
+				break
 			}
 		}
 
-		if guardTowersAlive > 0 {
-			conn.Write([]byte(fmt.Sprintf("❌ Must destroy all Guard Towers (%d remaining) before attacking King Tower!\n",
-				guardTowersAlive)))
+		if guardAlive {
+			conn.Write([]byte("❌ Must destroy all Guard Towers before attacking King Tower!\n"))
 			return false
 		}
 	}
 	return true
 }
 
-// sendAttackResults notifies players of attack outcome with enhanced details
-func (s *Server) sendAttackResults(attackerConn, defenderConn net.Conn, troop *Troop,
-	target *Tower, damage float64, attackerName, defenderName string) {
+// sendAttackResults notifies players of attack outcome
+func (s *Server) sendAttackResults(conn net.Conn, troop *Troop, target *Tower,
+	damage float64, attackerName, defenderName string) {
 
-	attackerMsg := fmt.Sprintf("⚔️ %s attacked %s for %.0f damage!\n",
+	message := fmt.Sprintf("⚔️ %s attacked %s for %.0f damage!\n",
 		troop.Name, target.Type, damage)
-	attackerMsg += fmt.Sprintf("🎯 Target HP: %.0f/%.0f (%.1f%%)\n",
-		target.HP, target.MaxHP, (target.HP/target.MaxHP)*100)
+	message += fmt.Sprintf("🎯 Target HP: %.0f/%.0f\n", target.HP, target.MaxHP)
 
-	defenderMsg := fmt.Sprintf("🚨 %s's %s attacked your %s for %.0f damage!\n",
-		attackerName, troop.Name, target.Type, damage)
-	defenderMsg += fmt.Sprintf("🏰 %s HP: %.0f/%.0f (%.1f%%)\n",
-		target.Type, target.HP, target.MaxHP, (target.HP/target.MaxHP)*100)
+	conn.Write([]byte(message))
 
-	if attackerConn != nil {
-		attackerConn.Write([]byte(attackerMsg))
-	}
-	if defenderConn != nil {
-		defenderConn.Write([]byte(defenderMsg))
-	}
+	s.broadcastToOthers(conn,
+		fmt.Sprintf("🚨 %s's %s attacked your %s for %.0f damage! HP: %.0f/%.0f\n",
+			attackerName, troop.Name, target.Type, damage, target.HP, target.MaxHP))
 }
 
 // handleTowerDestruction manages tower destruction and win conditions
-func (s *Server) handleTowerDestruction(tower *Tower, winnerNum int, attackerName, defenderName string) bool {
-	destructionMsg := fmt.Sprintf("💥 %s (%s) DESTROYED!\n", tower.Type, tower.Position)
+func (s *Server) handleTowerDestruction(tower *Tower, winnerNum int, attackerName, defenderName string) {
+	destructionMsg := fmt.Sprintf("💥 %s DESTROYED!\n", tower.Type)
 	s.broadcastToAll(destructionMsg)
 
-	// Award EXP for tower destruction
-	var winner *PlayerData
-	if winnerNum == 1 {
-		winner = s.gameState.Player1
-	} else {
-		winner = s.gameState.Player2
-	}
-	winner.EXP += tower.EXP
-
-	s.broadcastToAll(fmt.Sprintf("🏆 %s gained %.0f EXP for destroying %s!\n",
-		attackerName, tower.EXP, tower.Type))
-
-	// Check for immediate win condition (King Tower destroyed)
 	if tower.Type == "King Tower" {
 		s.endGame(winnerNum, fmt.Sprintf("👑 %s wins by destroying the King Tower!", attackerName))
-		return true
 	}
-
-	return true
 }
 
-// startManaRegeneration begins mana regeneration system (Enhanced TCR: 1 mana/sec)
+// calculateDamage computes damage with critical hit chance
+func (s *Server) calculateDamage(atkStat, defStat, critChance float64) float64 {
+	damage := atkStat
+
+	// Apply critical hit
+	if rand.Float64() < critChance {
+		damage *= 1.2
+	}
+
+	// Apply defense
+	damage = damage - defStat
+	if damage < 0 {
+		damage = 0
+	}
+
+	return damage
+}
+
+// startManaRegeneration begins mana regeneration system
 func (s *Server) startManaRegeneration() {
 	ticker := time.NewTicker(time.Second)
 	go func() {
@@ -468,7 +384,6 @@ func (s *Server) startManaRegeneration() {
 		for range ticker.C {
 			s.gameStateMux.Lock()
 			if s.gameState != nil && s.gameState.IsGameActive {
-				// Enhanced TCR: Regenerate 1 mana per second, max 10
 				if s.gameState.Player1Mana < 10 {
 					s.gameState.Player1Mana++
 				}
@@ -484,7 +399,7 @@ func (s *Server) startManaRegeneration() {
 	}()
 }
 
-// startGameTimer manages game duration (Enhanced TCR: 3 minutes)
+// startGameTimer manages game duration and timeout
 func (s *Server) startGameTimer() {
 	go func() {
 		time.Sleep(time.Duration(s.gameState.GameDuration) * time.Second)
@@ -498,51 +413,36 @@ func (s *Server) startGameTimer() {
 	}()
 }
 
-// handleGameTimeout processes game end by timeout (Enhanced TCR win conditions)
+// handleGameTimeout processes game end by timeout
 func (s *Server) handleGameTimeout() {
-	// Count surviving towers for each player
+	// Count surviving towers
 	p1Towers := 0
 	p2Towers := 0
-	p1KingAlive := false
-	p2KingAlive := false
 
-	for pos, tower := range s.gameState.Player1.Towers {
+	for _, tower := range s.gameState.Player1.Towers {
 		if tower.HP > 0 {
 			p1Towers++
-			if pos == "king" {
-				p1KingAlive = true
-			}
 		}
 	}
 
-	for pos, tower := range s.gameState.Player2.Towers {
+	for _, tower := range s.gameState.Player2.Towers {
 		if tower.HP > 0 {
 			p2Towers++
-			if pos == "king" {
-				p2KingAlive = true
-			}
 		}
 	}
 
-	// Enhanced TCR Win Conditions
-	if !p1KingAlive && p2KingAlive {
-		s.endGame(2, fmt.Sprintf("⏰ Time's up! %s wins - %s's King Tower was destroyed!",
-			s.gameState.Player2.Username, s.gameState.Player1.Username))
-	} else if !p2KingAlive && p1KingAlive {
-		s.endGame(1, fmt.Sprintf("⏰ Time's up! %s wins - %s's King Tower was destroyed!",
-			s.gameState.Player1.Username, s.gameState.Player2.Username))
-	} else if p1Towers > p2Towers {
-		s.endGame(1, fmt.Sprintf("⏰ Time's up! %s wins with %d towers remaining! (%d vs %d)",
-			s.gameState.Player1.Username, p1Towers, p1Towers, p2Towers))
+	if p1Towers > p2Towers {
+		s.endGame(1, fmt.Sprintf("⏰ Time's up! %s wins with %d towers remaining!",
+			s.gameState.Player1.Username, p1Towers))
 	} else if p2Towers > p1Towers {
-		s.endGame(2, fmt.Sprintf("⏰ Time's up! %s wins with %d towers remaining! (%d vs %d)",
-			s.gameState.Player2.Username, p2Towers, p2Towers, p1Towers))
+		s.endGame(2, fmt.Sprintf("⏰ Time's up! %s wins with %d towers remaining!",
+			s.gameState.Player2.Username, p2Towers))
 	} else {
 		s.endGameDraw()
 	}
 }
 
-// endGame handles game completion with winner (Enhanced TCR EXP System)
+// endGame handles game completion with winner
 func (s *Server) endGame(winnerNum int, message string) {
 	s.gameState.IsGameActive = false
 
@@ -555,7 +455,7 @@ func (s *Server) endGame(winnerNum int, message string) {
 		loser = s.gameState.Player1
 	}
 
-	// Enhanced TCR EXP System: Winner gets 30 EXP
+	// Award EXP
 	winner.EXP += 30
 
 	// Check for level ups
@@ -568,15 +468,15 @@ func (s *Server) endGame(winnerNum int, message string) {
 
 	// Announce results
 	s.broadcastToAll(fmt.Sprintf("\n🎉 GAME OVER! 🎉\n%s\n", message))
-	s.broadcastToAll(fmt.Sprintf("🏆 %s gained 30 EXP for winning!\n", winner.Username))
+	s.broadcastToAll(fmt.Sprintf("🏆 %s gained 30 EXP!\n", winner.Username))
 	s.broadcastToAll("Type 'quit' to leave or wait for next game.\n")
 }
 
-// endGameDraw handles draw games (Enhanced TCR EXP System)
+// endGameDraw handles draw games
 func (s *Server) endGameDraw() {
 	s.gameState.IsGameActive = false
 
-	// Enhanced TCR EXP System: Draw gives 10 EXP each
+	// Award EXP for draw
 	s.gameState.Player1.EXP += 10
 	s.gameState.Player2.EXP += 10
 
@@ -591,16 +491,15 @@ func (s *Server) endGameDraw() {
 	s.broadcastToAll("Type 'quit' to leave or wait for next game.\n")
 }
 
-// checkLevelUp handles player leveling system (Enhanced TCR Leveling System)
+// checkLevelUp handles player leveling system
 func (s *Server) checkLevelUp(player *PlayerData) {
-	// Enhanced TCR: Required EXP increases by 10% each level
 	requiredEXP := 100.0 * (1.1 * float64(player.Level))
 
 	for player.EXP >= requiredEXP {
 		player.EXP -= requiredEXP
 		player.Level++
 
-		// Enhanced TCR: EXP increases troop/tower stats by 10% per level
+		// Increase stats by 10%
 		for _, tower := range player.Towers {
 			tower.HP *= 1.1
 			tower.MaxHP *= 1.1
@@ -617,57 +516,9 @@ func (s *Server) checkLevelUp(player *PlayerData) {
 			troop.Level = player.Level
 		}
 
-		s.broadcastToAll(fmt.Sprintf("🎊 %s leveled up to Level %d! All stats increased by 10%%!\n",
+		s.broadcastToAll(fmt.Sprintf("🎊 %s leveled up to Level %d!\n",
 			player.Username, player.Level))
 
 		requiredEXP = 100.0 * (1.1 * float64(player.Level))
 	}
-}
-
-// Additional helper functions for enhanced gameplay
-
-// getTowerCount returns the number of remaining towers for a player
-func (s *Server) getTowerCount(player *PlayerData) int {
-	count := 0
-	for _, tower := range player.Towers {
-		if tower.HP > 0 {
-			count++
-		}
-	}
-	return count
-}
-
-// isKingTowerDestroyed checks if king tower is destroyed
-func (s *Server) isKingTowerDestroyed(player *PlayerData) bool {
-	if kingTower, exists := player.Towers["king"]; exists {
-		return kingTower.HP <= 0
-	}
-	return false
-}
-
-// displayWinConditions shows current win conditions to players
-func (s *Server) displayWinConditions(conn net.Conn) {
-	conditions := `
-=== 🏆 WIN CONDITIONS 🏆 ===
-1. Destroy opponent's King Tower (Instant Win)
-2. When time runs out (3 minutes):
-   - Player with more towers remaining wins
-   - If equal towers: DRAW
-
-=== 📋 GAME RULES 📋 ===
-• Must destroy Guard Towers before King Tower
-• Mana regenerates 1 per second (max 10)
-• Each troop costs mana to deploy
-• Towers can counter-attack
-• Critical hits deal 20% bonus damage
-• Queen heals lowest HP tower for 300
-
-=== 💎 EXP REWARDS 💎 ===
-• Win: 30 EXP
-• Draw: 10 EXP each
-• Tower destroyed: EXP based on tower type
-• Level up: +10% to all stats
-=============================
-`
-	conn.Write([]byte(conditions))
 }
