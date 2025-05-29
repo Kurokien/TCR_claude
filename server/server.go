@@ -61,23 +61,34 @@ func (s *Server) handleClient(conn net.Conn) {
 	var username string
 	var playerNum int
 
-	// ĐƠN GIẢN HÓA: CHỈ GỬI USERNAME PROMPT TRƯỚC
-	conn.Write([]byte("Enter username: "))
+	// ĐỢI MỘT CHÚT ĐỂ CLIENT SẴN SÀNG, RỒIMỚI GỬI PROMPT
+	time.Sleep(500 * time.Millisecond)
+
+	// GỬI USERNAME PROMPT VỚI NEWLINE
+	log.Println("Sending username prompt to client")
+	conn.Write([]byte("Enter username: \n"))
 
 	// Đọc username
+	log.Println("Waiting for username input")
 	if !scanner.Scan() {
+		log.Println("Failed to read username")
 		return
 	}
 	username = strings.TrimSpace(scanner.Text())
+	log.Printf("Received username: '%s'", username)
 
 	// Gửi password prompt
-	conn.Write([]byte("Enter password: "))
+	log.Println("Sending password prompt")
+	conn.Write([]byte("Enter password: \n"))
 
 	// Đọc password
+	log.Println("Waiting for password input")
 	if !scanner.Scan() {
+		log.Println("Failed to read password")
 		return
 	}
 	password := strings.TrimSpace(scanner.Text())
+	log.Printf("Received password: '%s'", password)
 
 	// Authenticate
 	player := s.authenticatePlayer(username, password)

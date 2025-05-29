@@ -1,4 +1,4 @@
-// client.go - Simple clean version
+// client.go - Ultra simple version
 package main
 
 import (
@@ -12,11 +12,10 @@ import (
 
 // Client represents a game client
 type Client struct {
-	conn     net.Conn
-	scanner  *bufio.Scanner
-	username string
-	running  bool
-	mu       sync.Mutex
+	conn    net.Conn
+	scanner *bufio.Scanner
+	running bool
+	mu      sync.Mutex
 }
 
 // NewClient creates a new client instance
@@ -47,7 +46,7 @@ func (c *Client) Start() {
 	// Start listening for server messages
 	go c.listenForMessages()
 
-	// Handle user input
+	// Handle user input (KHÔNG CÓ DELAY, ĐỂ SERVER CONTROL)
 	c.handleUserInput()
 }
 
@@ -58,21 +57,10 @@ func (c *Client) listenForMessages() {
 
 		c.mu.Lock()
 		if c.running {
-			// Xử lý message đặc biệt
-			if strings.Contains(message, "Enter username:") {
-				fmt.Print(message)
-			} else if strings.Contains(message, "Enter password:") {
-				fmt.Print(message)
-			} else if strings.Contains(message, "YOUR TURN") {
-				fmt.Printf("\n🔔 %s\n", message)
-			} else if strings.Contains(message, "'s TURN") {
-				fmt.Printf("\n⏳ %s\n", message)
-			} else {
-				// In message bình thường
-				fmt.Print(message)
-				if !strings.HasSuffix(message, "\n") {
-					fmt.Println()
-				}
+			fmt.Print(message)
+			// LUÔN LUÔN THÊM NEWLINE NẾU KHÔNG CÓ
+			if !strings.HasSuffix(message, "\n") && !strings.HasSuffix(message, ": ") {
+				fmt.Println()
 			}
 		}
 		c.mu.Unlock()
@@ -114,21 +102,10 @@ func (c *Client) handleUserInput() {
 	}
 }
 
-// Disconnect closes the connection
-func (c *Client) Disconnect() {
-	c.mu.Lock()
-	c.running = false
-	c.mu.Unlock()
-
-	if c.conn != nil {
-		c.conn.Close()
-	}
-}
-
 // printWelcome displays client welcome message
 func printWelcome() {
 	fmt.Println("╔══════════════════════════════════════════════════╗")
-	fmt.Println("║          Text-Based Clash Royale Client          ║")
+	fmt.Println("║          Text-Based Clash Royale Client         ║")
 	fmt.Println("║                   TCR v2.0                       ║")
 	fmt.Println("║                Turn-Based Edition                ║")
 	fmt.Println("╚══════════════════════════════════════════════════╝")

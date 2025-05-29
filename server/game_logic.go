@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/rand"
 	"net"
+	"strings"
 	"time"
 )
 
@@ -103,8 +104,22 @@ func (s *Server) displayGameState(conn net.Conn, playerNum int) {
 	output += fmt.Sprintf("╚═══════════════════════════════════════════════════╝\n")
 
 	if s.gameState.Turn == playerNum {
-		output += fmt.Sprintf("💡 Your turn! Use: attack <1-3> <target>\n")
-		output += fmt.Sprintf("   Targets: king, guard1, guard2\n")
+		// Determine valid target based on current tower status
+		var nextTarget string
+		guard1 := opponent.Towers["guard1"]
+		guard2 := opponent.Towers["guard2"]
+		king := opponent.Towers["king"]
+
+		if guard1 != nil && guard1.HP > 0 {
+			nextTarget = "guard1"
+		} else if guard2 != nil && guard2.HP > 0 {
+			nextTarget = "guard2"
+		} else if king != nil && king.HP > 0 {
+			nextTarget = "king"
+		}
+
+		output += fmt.Sprintf("💡 Your turn! Use: attack <1-3> %s\n", nextTarget)
+		output += fmt.Sprintf("🎯 Attack order: Guard1 → Guard2 → King\n")
 	}
 
 	conn.Write([]byte(output))
@@ -284,11 +299,11 @@ func (s *Server) handleQueenSpecial(conn net.Conn, player *PlayerData, playerNam
 	}
 }
 
-// findTargetTower locates the target tower
+// findTargetTower locates the target tower (no smart targeting)
 func (s *Server) findTargetTower(defender *PlayerData, targetType string) *Tower {
 	for pos, tower := range defender.Towers {
 		if tower.HP <= 0 {
-			continue
+			continue // Skip destroyed towers
 		}
 
 		switch targetType {
@@ -305,6 +320,7 @@ func (s *Server) findTargetTower(defender *PlayerData, targetType string) *Tower
 				return tower
 			}
 		case "guard":
+			// BỎ SMART TARGETING - chỉ tìm guard1 hoặc guard2 có sẵn
 			if pos == "guard1" || pos == "guard2" {
 				return tower
 			}
@@ -313,23 +329,49 @@ func (s *Server) findTargetTower(defender *PlayerData, targetType string) *Tower
 	return nil
 }
 
-// canAttackTarget validates attack rules
+// canAttackTarget validates attack rules with detailed messages
 func (s *Server) canAttackTarget(defender *PlayerData, target *Tower, conn net.Conn) bool {
-	if target.Type == "King Tower" {
-		// Check if any guard towers are still alive
-		guardAlive := false
-		for pos, tower := range defender.Towers {
-			if (pos == "guard1" || pos == "guard2") && tower.HP > 0 {
-				guardAlive = true
-				break
-			}
-		}
-
-		if guardAlive {
-			conn.Write([]byte("❌ Must destroy all Guard Towers before attacking King Tower!\n"))
+	// RULE 1: Phải tiêu diệt guard1 trước khi tấn công guard2
+	if target.Type == "Guard Tower" && target.Position == "guard2" {
+		guard1 := defender.Towers["guard1"]
+		if guard1 != nil && guard1.HP > 0 {
+			conn.Write([]byte("🚫 INVALID TARGET! 🚫\n"))
+			conn.Write([]byte("❌ Must destroy Guard Tower 1 before attacking Guard Tower 2!\n"))
+			conn.Write([]byte(fmt.Sprintf("🏰 Guard1 HP: %.0f/%.0f (still alive)\n", guard1.HP, guard1.MaxHP)))
+			conn.Write([]byte("💡 Try: attack <1-3> guard1\n"))
+			conn.Write([]byte("🎯 Attack order: Guard1 → Guard2 → King\n"))
+			conn.Write([]byte("⚡ You can attack again this turn!\n\n"))
 			return false
 		}
 	}
+
+	// RULE 2: Phải tiêu diệt tất cả Guard Towers trước khi tấn công King
+	if target.Type == "King Tower" {
+		var aliveGuards []string
+		for pos, tower := range defender.Towers {
+			if (pos == "guard1" || pos == "guard2") && tower.HP > 0 {
+				aliveGuards = append(aliveGuards, fmt.Sprintf("%s (%.0f HP)", pos, tower.HP))
+			}
+		}
+
+		if len(aliveGuards) > 0 {
+			conn.Write([]byte("🚫 INVALID TARGET! 🚫\n"))
+			conn.Write([]byte("❌ Must destroy all Guard Towers before attacking King Tower!\n"))
+			conn.Write([]byte(fmt.Sprintf("🏰 Remaining guards: %s\n", strings.Join(aliveGuards, ", "))))
+
+			// Suggest next target
+			if defender.Towers["guard1"] != nil && defender.Towers["guard1"].HP > 0 {
+				conn.Write([]byte("💡 Try: attack <1-3> guard1\n"))
+			} else if defender.Towers["guard2"] != nil && defender.Towers["guard2"].HP > 0 {
+				conn.Write([]byte("💡 Try: attack <1-3> guard2\n"))
+			}
+
+			conn.Write([]byte("🎯 Attack order: Guard1 → Guard2 → King\n"))
+			conn.Write([]byte("⚡ You can attack again this turn!\n\n"))
+			return false
+		}
+	}
+
 	return true
 }
 
