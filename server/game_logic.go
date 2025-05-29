@@ -173,25 +173,26 @@ func (s *Server) processAttackWithTurns(conn net.Conn, playerNum int, troopIndex
 		return
 	}
 
-	// Deduct mana
-	*attackerMana -= troop.MANA
-
-	// Handle special abilities
-	if troop.Name == "Queen" {
-		s.handleQueenSpecial(conn, attacker, attackerName)
-		s.switchTurn() // Queen cũng tốn lượt
-		return
-	}
-
-	// Find and validate target
+	// Find target TRƯỚC KHI VALIDATE (để có thể hiển thị thông báo lỗi chi tiết)
 	targetTower := s.findTargetTower(defender, targetType)
 	if targetTower == nil {
 		conn.Write([]byte("❌ Invalid target or target already destroyed.\n"))
 		return
 	}
 
-	// Validate attack rules
+	// Validate attack rules - KHÔNG MẤT MANA NẾU INVALID
 	if !s.canAttackTarget(defender, targetTower, conn) {
+		// KHÔNG mất mana, KHÔNG mất lượt - chỉ hiển thị lỗi và cho phép attack lại
+		return
+	}
+
+	// NẾU VALID → Deduct mana
+	*attackerMana -= troop.MANA
+
+	// Handle special abilities
+	if troop.Name == "Queen" {
+		s.handleQueenSpecial(conn, attacker, attackerName)
+		s.switchTurn() // Queen cũng tốn lượt
 		return
 	}
 

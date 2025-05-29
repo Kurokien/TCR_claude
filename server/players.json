@@ -79,12 +79,12 @@
     "12": {
       "username": "12",
       "password": "12",
-      "exp": 30,
+      "exp": 40,
       "level": 1,
       "towers": {
         "guard1": {
           "type": "Guard Tower",
-          "hp": 0,
+          "hp": 1000,
           "max_hp": 1000,
           "atk": 300,
           "def": 100,
@@ -95,7 +95,7 @@
         },
         "guard2": {
           "type": "Guard Tower",
-          "hp": 300,
+          "hp": 1000,
           "max_hp": 1000,
           "atk": 300,
           "def": 100,
@@ -155,12 +155,12 @@
     "123": {
       "username": "123",
       "password": "123",
-      "exp": 0,
+      "exp": 10,
       "level": 1,
       "towers": {
         "guard1": {
           "type": "Guard Tower",
-          "hp": 0,
+          "hp": 700,
           "max_hp": 1000,
           "atk": 300,
           "def": 100,
@@ -171,7 +171,7 @@
         },
         "guard2": {
           "type": "Guard Tower",
-          "hp": 0,
+          "hp": 1000,
           "max_hp": 1000,
           "atk": 300,
           "def": 100,

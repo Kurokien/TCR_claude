@@ -105,7 +105,7 @@ func (c *Client) handleUserInput() {
 // printWelcome displays client welcome message
 func printWelcome() {
 	fmt.Println("╔══════════════════════════════════════════════════╗")
-	fmt.Println("║          Text-Based Clash Royale Client         ║")
+	fmt.Println("║          Text-Based Clash Royale Client          ║")
 	fmt.Println("║                   TCR v2.0                       ║")
 	fmt.Println("║                Turn-Based Edition                ║")
 	fmt.Println("╚══════════════════════════════════════════════════╝")
